@@ -33,7 +33,8 @@ export default function CategoryManager({
     filterColumn: '',
     filterType: 'equal' as Category['filterType'],
     filterValue: '',
-    allowRepetition: false
+    allowRepetition: false,
+    limit: undefined as number | undefined
   });
 
   const predefinedCategories = [
@@ -54,7 +55,8 @@ export default function CategoryManager({
       filterColumn: formData.filterColumn,
       filterType: formData.filterType,
       filterValue: formData.filterValue,
-      allowRepetition: formData.allowRepetition
+      allowRepetition: formData.allowRepetition,
+      limit: formData.limit
     });
 
     setFormData({
@@ -63,7 +65,8 @@ export default function CategoryManager({
       filterColumn: '',
       filterType: 'equal',
       filterValue: '',
-      allowRepetition: false
+      allowRepetition: false,
+      limit: undefined
     });
     setShowForm(false);
   };
@@ -228,6 +231,22 @@ export default function CategoryManager({
                     />
                   </div>
 
+                  <div className="space-y-2">
+                    <Label htmlFor="limit">Player Limit (optional)</Label>
+                    <Input
+                      id="limit"
+                      type="number"
+                      min="1"
+                      value={formData.limit || ''}
+                      onChange={(e) => setFormData({ 
+                        ...formData, 
+                        limit: e.target.value ? Number(e.target.value) : undefined 
+                      })}
+                      placeholder="No limit"
+                      className="bg-background/50"
+                    />
+                  </div>
+
                   <div className="flex items-center space-x-2">
                     <Switch
                       id="allowRepetition"
@@ -292,7 +311,7 @@ export default function CategoryManager({
                           </span>
                           <div className="flex items-center gap-1">
                             <Users className="h-3 w-3" />
-                            <span>{category.players.length} players</span>
+                            <span>{category.players.length} players{category.limit ? ` (limit: ${category.limit})` : ''}</span>
                           </div>
                         </div>
                       </div>

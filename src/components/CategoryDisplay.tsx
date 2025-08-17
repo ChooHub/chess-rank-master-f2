@@ -100,7 +100,7 @@ export default function CategoryDisplay({ categories, columns }: CategoryDisplay
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {category.players.map((player, playerIndex) => (
+                    {(category.limit ? category.players.slice(0, category.limit) : category.players).map((player, playerIndex) => (
                       <TableRow 
                         key={playerIndex}
                         className="hover:bg-secondary/20 transition-colors duration-200"

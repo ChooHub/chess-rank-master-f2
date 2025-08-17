@@ -11,6 +11,7 @@ export interface Category {
   filterValue: string | number;
   allowRepetition: boolean;
   priority: number;
+  limit?: number;
   players: TournamentData[];
 }
 
