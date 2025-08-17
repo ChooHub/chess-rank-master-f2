@@ -7,7 +7,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Plus, Settings, Users, Trophy, Target } from 'lucide-react';
-import { Category, TournamentData } from '@/types/tournament';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { Category, Filter } from '@/types/tournament';
 
 import { cn } from '@/lib/utils';
 
@@ -17,6 +20,72 @@ interface CategoryManagerProps {
   onAddCategory: (category: Omit<Category, 'id' | 'priority' | 'players'>) => void;
   onUpdateCategory: (id: string, updates: Partial<Category>) => void;
   onDeleteCategory: (id: string) => void;
+  onReorderCategories: (reordered: Category[]) => void;
+}
+
+const getFilterTypeLabel = (type: Filter['filterType']) => {
+  const labels = {
+    equal: 'Equal to',
+    greater: 'Greater than',
+    less: 'Less than',
+    contains: 'Contains'
+  } as const;
+  return labels[type];
+};
+
+/**
+ * SortableCategory - small wrapper component to make a category draggable
+ */
+function SortableCategory({
+  category,
+  index,
+  onDelete
+}: {
+  category: Category;
+  index: number;
+  onDelete: (id: string) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: category.id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition
+  } as React.CSSProperties;
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      <Card key={category.id} className="border-border/30 bg-background/20">
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-xs">
+                  Priority {index + 1}
+                </Badge>
+                <h3 className="font-semibold">{category.name}</h3>
+                <Badge variant="secondary">{category.type}</Badge>
+              </div>
+              <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                <span>
+                  {category.filters?.map(f => `${f.filterColumn} ${getFilterTypeLabel(f.filterType)} "${f.filterValue}"`).join(', ')}
+                </span>
+                <div className="flex items-center gap-1">
+                  <Users className="h-3 w-3" />
+                  <span>{category.players.length} players{category.limit ? ` (limit: ${category.limit})` : ''}</span>
+                </div>
+              </div>
+            </div>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => onDelete(category.id)}
+            >
+              Remove
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
 }
 
 export default function CategoryManager({ 
@@ -24,15 +93,14 @@ export default function CategoryManager({
   columns, 
   onAddCategory, 
   onUpdateCategory, 
-  onDeleteCategory 
+  onDeleteCategory,
+  onReorderCategories
 }: CategoryManagerProps) {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     type: 'Custom' as Category['type'],
-    filterColumn: '',
-    filterType: 'equal' as Category['filterType'],
-    filterValue: '',
+    filters: [] as Filter[],
     allowRepetition: false,
     limit: undefined as number | undefined
   });
@@ -43,18 +111,38 @@ export default function CategoryManager({
     { type: 'U18 Girl', name: 'Under 18 Girls', description: 'Female players under 18' },
   ];
 
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handleDragEnd = (event: any) => {
+    const { active, over } = event;
+    if (!over) return;
+    if (active.id !== over.id) {
+      const oldIndex = categories.findIndex(cat => cat.id === active.id);
+      const newIndex = categories.findIndex(cat => cat.id === over.id);
+      const reordered = arrayMove(categories, oldIndex, newIndex)
+        .map((cat, index) => ({ ...cat, priority: index }));
+      // pass reordered array to parent so it can set order and re-run filters
+      onReorderCategories(reordered);
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name || !formData.filterColumn || !formData.filterValue) {
+    // Require name and at least one filter for non-Open categories (value can be blank => wildcard)
+    if (!formData.name || (formData.type !== 'Open' && formData.filters.length === 0)) {
       return;
     }
+    // ensure all filters have a selected column; empty filterValue is allowed and treated as wildcard
+    const invalidFilter = formData.filters.some(f => !f.filterColumn);
+    if (invalidFilter) return;
 
     onAddCategory({
       name: formData.name,
       type: formData.type,
-      filterColumn: formData.filterColumn,
-      filterType: formData.filterType,
-      filterValue: formData.filterValue,
+      filters: formData.filters,
       allowRepetition: formData.allowRepetition,
       limit: formData.limit
     });
@@ -62,9 +150,7 @@ export default function CategoryManager({
     setFormData({
       name: '',
       type: 'Custom',
-      filterColumn: '',
-      filterType: 'equal',
-      filterValue: '',
+      filters: [],
       allowRepetition: false,
       limit: undefined
     });
@@ -80,7 +166,7 @@ export default function CategoryManager({
     setShowForm(true);
   };
 
-  const getFilterTypeLabel = (type: Category['filterType']) => {
+  const getFilterTypeLabel = (type: Filter['filterType']) => {
     const labels = {
       equal: 'Equal to',
       greater: 'Greater than',
@@ -147,88 +233,106 @@ export default function CategoryManager({
               <CardContent>
                 <form onSubmit={handleSubmit} className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
+                    <div className="space-y-2 col-span-2">
                       <Label htmlFor="categoryName">Category Name</Label>
                       <Input
                         id="categoryName"
                         value={formData.name}
                         onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        placeholder="e.g., Under 16 Players"
+                        placeholder="e.g., Open A"
                         className="bg-background/50"
                       />
-                    </div>
+                      <Label>Filters</Label>
+                      <div className="space-y-2">
+                        {formData.filters.map((f, idx) => (
+                          <div key={idx} className="flex items-center gap-2">
+                            <div className="w-1/3">
+                              <Select
+                                value={f.filterColumn}
+                                onValueChange={(value) => {
+                                  const newFilters = [...formData.filters];
+                                  newFilters[idx] = { ...newFilters[idx], filterColumn: value };
+                                  setFormData({ ...formData, filters: newFilters });
+                                }}
+                              >
+                                <SelectTrigger className="bg-background/50">
+                                  <SelectValue placeholder="Column" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {columns.map((column) => (
+                                    <SelectItem key={column} value={column}>
+                                      {column}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="categoryType">Category Type</Label>
-                      <Select
-                        value={formData.type}
-                        onValueChange={(value: Category['type']) => 
-                          setFormData({ ...formData, type: value })
-                        }
-                      >
-                        <SelectTrigger className="bg-background/50">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Open">Open</SelectItem>
-                          <SelectItem value="U18 Boy">U18 Boy</SelectItem>
-                          <SelectItem value="U18 Girl">U18 Girl</SelectItem>
-                          <SelectItem value="Custom">Custom</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                            <div className="w-1/4">
+                              <Select
+                                value={f.filterType}
+                                onValueChange={(value: Filter['filterType']) => {
+                                  const newFilters = [...formData.filters];
+                                  newFilters[idx] = { ...newFilters[idx], filterType: value };
+                                  setFormData({ ...formData, filters: newFilters });
+                                }}
+                              >
+                                <SelectTrigger className="bg-background/50">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="equal">Equal to</SelectItem>
+                                  <SelectItem value="greater">Greater than</SelectItem>
+                                  <SelectItem value="less">Less than</SelectItem>
+                                  <SelectItem value="contains">Contains</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="filterColumn">Filter by Column</Label>
-                      <Select
-                        value={formData.filterColumn}
-                        onValueChange={(value) => 
-                          setFormData({ ...formData, filterColumn: value })
-                        }
-                      >
-                        <SelectTrigger className="bg-background/50">
-                          <SelectValue placeholder="Select column to filter by" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {columns.map((column) => (
-                            <SelectItem key={column} value={column}>
-                              {column}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                            <div className="flex-1">
+                              <Input
+                                value={String(f.filterValue ?? '')}
+                                onChange={(e) => {
+                                  const newFilters = [...formData.filters];
+                                  newFilters[idx] = { ...newFilters[idx], filterValue: e.target.value };
+                                  setFormData({ ...formData, filters: newFilters });
+                                }}
+                                placeholder="Value"
+                                className="bg-background/50"
+                              />
+                            </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="filterType">Filter Type</Label>
-                      <Select
-                        value={formData.filterType}
-                        onValueChange={(value: Category['filterType']) => 
-                          setFormData({ ...formData, filterType: value })
-                        }
-                      >
-                        <SelectTrigger className="bg-background/50">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="equal">Equal to</SelectItem>
-                          <SelectItem value="greater">Greater than</SelectItem>
-                          <SelectItem value="less">Less than</SelectItem>
-                          <SelectItem value="contains">Contains</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              onClick={() => {
+                                const newFilters = formData.filters.filter((_, i) => i !== idx);
+                                setFormData({ ...formData, filters: newFilters });
+                              }}
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        ))}
 
-                  <div className="space-y-2">
-                    <Label htmlFor="filterValue">Filter Value</Label>
-                    <Input
-                      id="filterValue"
-                      value={formData.filterValue}
-                      onChange={(e) => setFormData({ ...formData, filterValue: e.target.value })}
-                      placeholder="Enter value to filter by"
-                      className="bg-background/50"
-                    />
+                        <div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() =>
+                              setFormData({
+                                ...formData,
+                                filters: [...formData.filters, { filterColumn: '', filterType: 'equal', filterValue: '' }]
+                              })
+                            }
+                            className="gap-2"
+                          >
+                            <Plus className="h-4 w-4" />
+                            Add Filter
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="space-y-2">
@@ -292,40 +396,14 @@ export default function CategoryManager({
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {categories.map((category, index) => (
-                <Card key={category.id} className="border-border/30 bg-background/20">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="text-xs">
-                            Priority {index + 1}
-                          </Badge>
-                          <h3 className="font-semibold">{category.name}</h3>
-                          <Badge variant="secondary">{category.type}</Badge>
-                        </div>
-                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                          <span>
-                            {category.filterColumn} {getFilterTypeLabel(category.filterType)} "{category.filterValue}"
-                          </span>
-                          <div className="flex items-center gap-1">
-                            <Users className="h-3 w-3" />
-                            <span>{category.players.length} players{category.limit ? ` (limit: ${category.limit})` : ''}</span>
-                          </div>
-                        </div>
-                      </div>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => onDeleteCategory(category.id)}
-                      >
-                        Remove
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+              <div className="space-y-3">
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                  <SortableContext items={categories.map(c => c.id)} strategy={verticalListSortingStrategy}>
+                    {categories.map((category, index) => (
+                      <SortableCategory key={category.id} category={category} index={index} onDelete={onDeleteCategory} />
+                    ))}
+                  </SortableContext>
+                </DndContext>
             </div>
           </CardContent>
         </Card>
