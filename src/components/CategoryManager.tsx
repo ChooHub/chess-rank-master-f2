@@ -39,11 +39,13 @@ const getFilterTypeLabel = (type: Filter['filterType']) => {
 function SortableCategory({
   category,
   index,
-  onDelete
+  onDelete,
+  onEdit
 }: {
   category: Category;
   index: number;
   onDelete: (id: string) => void;
+  onEdit: (category: Category) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: category.id });
   const style = {
@@ -74,13 +76,32 @@ function SortableCategory({
                 </div>
               </div>
             </div>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => onDelete(category.id)}
-            >
-              Remove
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onPointerDown={(e) => { e.stopPropagation(); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  console.debug('SortableCategory: Edit clicked', category.id);
+                  onEdit(category);
+                }}
+              >
+                Edit
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onPointerDown={(e) => { e.stopPropagation(); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  console.debug('SortableCategory: Remove clicked', category.id);
+                  onDelete(category.id);
+                }}
+              >
+                Remove
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -104,6 +125,7 @@ export default function CategoryManager({
     allowRepetition: false,
     limit: undefined as number | undefined
   });
+  const [editId, setEditId] = useState<string | null>(null);
 
   const predefinedCategories = [
     { type: 'Open', name: 'Open Category', description: 'All players eligible' },
@@ -138,15 +160,27 @@ export default function CategoryManager({
     // ensure all filters have a selected column; empty filterValue is allowed and treated as wildcard
     const invalidFilter = formData.filters.some(f => !f.filterColumn);
     if (invalidFilter) return;
-
-    onAddCategory({
-      name: formData.name,
-      type: formData.type,
-      filters: formData.filters,
-      allowRepetition: formData.allowRepetition,
-      limit: formData.limit
-    });
-
+  
+    if (editId) {
+      // update existing category
+      onUpdateCategory(editId, {
+        name: formData.name,
+        type: formData.type,
+        filters: formData.filters,
+        allowRepetition: formData.allowRepetition,
+        limit: formData.limit
+      });
+    } else {
+      // create new category
+      onAddCategory({
+        name: formData.name,
+        type: formData.type,
+        filters: formData.filters,
+        allowRepetition: formData.allowRepetition,
+        limit: formData.limit
+      });
+    }
+  
     setFormData({
       name: '',
       type: 'Custom',
@@ -154,6 +188,7 @@ export default function CategoryManager({
       allowRepetition: false,
       limit: undefined
     });
+    setEditId(null);
     setShowForm(false);
   };
 
@@ -163,6 +198,7 @@ export default function CategoryManager({
       name: category.name,
       type: category.type as Category['type']
     });
+    setEditId(null);
     setShowForm(true);
   };
 
@@ -225,7 +261,14 @@ export default function CategoryManager({
           {showForm && (
             <Card className="border-primary/20 bg-secondary/10 animate-slide-up">
               <CardHeader>
-                <CardTitle className="text-lg">Create New Category</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg">{editId ? 'Edit Category' : 'Create New Category'}</CardTitle>
+                  {editId && (
+                    <div className="text-sm text-accent">
+                      Editing: {editId}
+                    </div>
+                  )}
+                </div>
                 <CardDescription>
                   Define filtering rules for this category
                 </CardDescription>
@@ -366,12 +409,12 @@ export default function CategoryManager({
 
                   <div className="flex gap-2 pt-4">
                     <Button type="submit" variant="tournament">
-                      Create Category
+                      {editId ? 'Save Changes' : 'Create Category'}
                     </Button>
-                    <Button 
-                      type="button" 
-                      variant="outline" 
-                      onClick={() => setShowForm(false)}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => { setShowForm(false); setEditId(null); }}
                     >
                       Cancel
                     </Button>
@@ -400,7 +443,25 @@ export default function CategoryManager({
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                   <SortableContext items={categories.map(c => c.id)} strategy={verticalListSortingStrategy}>
                     {categories.map((category, index) => (
-                      <SortableCategory key={category.id} category={category} index={index} onDelete={onDeleteCategory} />
+                      <SortableCategory
+                        key={category.id}
+                        category={category}
+                        index={index}
+                        onDelete={onDeleteCategory}
+                        onEdit={(cat) => {
+                          console.debug('CategoryManager: onEdit received', cat.id);
+                          // prefill form for editing
+                          setFormData({
+                            name: cat.name,
+                            type: cat.type,
+                            filters: cat.filters || [],
+                            allowRepetition: !!cat.allowRepetition,
+                            limit: cat.limit
+                          });
+                          setEditId(cat.id);
+                          setShowForm(true);
+                        }}
+                      />
                     ))}
                   </SortableContext>
                 </DndContext>
