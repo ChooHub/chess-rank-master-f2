@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { Crown, Trophy, Users, Settings } from 'lucide-react';
+import { Trophy, Users, Settings } from 'lucide-react';
 import { TournamentData, Category } from '@/types/tournament';
 import FileUpload from '@/components/FileUpload';
 import DataTable from '@/components/DataTable';
