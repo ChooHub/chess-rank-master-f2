@@ -177,7 +177,7 @@ const Index = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-gradient-primary">
-                <Crown className="h-6 w-6 text-primary-foreground" />
+                <img src="/chess_logo.png" alt="Chess logo" className="h-6 w-6 object-contain" />
               </div>
               <div>
                 <h1 className="text-2xl font-bold bg-gradient-primary bg-clip-text text-transparent">
@@ -272,6 +272,12 @@ const Index = () => {
           </Tabs>
         )}
       </div>
+
+      <footer className="border-t border-border/50 bg-card/10 py-4">
+        <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
+          Created by Ambert Chan
+        </div>
+      </footer>
     </div>
   );
 };
