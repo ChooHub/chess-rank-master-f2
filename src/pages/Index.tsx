@@ -28,7 +28,8 @@ const Index = () => {
   }, []);
 
   const applyFilters = useCallback((allData: TournamentData[], categoryList: Category[]) => {
-    const usedPlayers = new Set<string>();
+    // Track players used globally across all categories to prevent repetition
+    const globalUsedPlayers = new Set<string>();
     
     return categoryList.map(category => {
       let filteredData: TournamentData[] = [];
@@ -39,7 +40,7 @@ const Index = () => {
         const remaining = allData.filter(row => {
           if (!category.allowRepetition) {
             const playerKey = JSON.stringify(row);
-            return !usedPlayers.has(playerKey);
+            return !globalUsedPlayers.has(playerKey);
           }
           return true;
         });
@@ -49,16 +50,20 @@ const Index = () => {
 
         // Mark selected players as used when repetition is not allowed
         if (!category.allowRepetition) {
-          filteredData.forEach(row => usedPlayers.add(JSON.stringify(row)));
+          filteredData.forEach(row => globalUsedPlayers.add(JSON.stringify(row)));
         }
       } else {
-        // New filtering logic for non-Open categories using category.filters (AND across filters)
-        filteredData = allData.filter(row => {
+        // New filtering logic for non-Open categories using category.filters
+        // FIXED: Separate filtering logic from repetition logic to handle different filter criteria correctly
+        
+        // First, get all players that match the filter criteria
+        const matchingPlayers = allData.filter(row => {
           if (!category.filters || category.filters.length === 0) return false;
 
-          // Evaluate all filters; all must match (AND)
-          // If a filter's value is empty, treat it as a wildcard for that column (match all)
-          let matches = true;
+          // FIXED: Use OR logic - if ANY filter matches, include the player
+          // This allows categories like "Best lady equal to U18g/U15g/U12g" to work correctly
+          let matchesAnyFilter = false;
+          
           for (const f of category.filters) {
             const columnValue = row[f.filterColumn];
             const filterValue = f.filterValue;
@@ -68,49 +73,60 @@ const Index = () => {
               continue;
             }
 
+            let currentFilterMatches = false;
             switch (f.filterType) {
               case 'equal':
-                if (String(columnValue).toLowerCase() !== String(filterValue).toLowerCase()) {
-                  matches = false;
+                if (String(columnValue).toLowerCase() === String(filterValue).toLowerCase()) {
+                  currentFilterMatches = true;
                 }
                 break;
               case 'greater':
-                if (!(Number(columnValue) > Number(filterValue))) {
-                  matches = false;
+                if (Number(columnValue) > Number(filterValue)) {
+                  currentFilterMatches = true;
                 }
                 break;
               case 'less':
-                if (!(Number(columnValue) < Number(filterValue))) {
-                  matches = false;
+                if (Number(columnValue) < Number(filterValue)) {
+                  currentFilterMatches = true;
                 }
                 break;
               case 'contains':
-                if (!String(columnValue).toLowerCase().includes(String(filterValue).toLowerCase())) {
-                  matches = false;
+                if (String(columnValue).toLowerCase().includes(String(filterValue).toLowerCase())) {
+                  currentFilterMatches = true;
                 }
                 break;
               default:
-                matches = false;
+                currentFilterMatches = false;
             }
 
-            if (!matches) break;
-          }
-
-          // Check repetition rules
-          if (matches && !category.allowRepetition) {
-            const playerKey = JSON.stringify(row);
-            if (usedPlayers.has(playerKey)) {
-              return false;
+            // If any filter matches, we can include this player
+            if (currentFilterMatches) {
+              matchesAnyFilter = true;
+              break; // No need to check other filters since we found a match
             }
-            usedPlayers.add(playerKey);
           }
 
-          return matches;
+          return matchesAnyFilter;
         });
 
-        // Apply limit if specified for non-Open categories as well
-        if (category.limit) {
-          filteredData = filteredData.slice(0, category.limit);
+        // FIXED: Apply repetition rules more intelligently
+        // Only exclude players who are already used AND this category doesn't allow repetition
+        if (category.allowRepetition) {
+          // If repetition is allowed, take all matching players regardless of global usage
+          filteredData = matchingPlayers;
+        } else {
+          // If repetition is not allowed, exclude players already used in previous categories
+          // But only mark them as used AFTER we've selected the final players for this category
+          const availablePlayers = matchingPlayers.filter(row => {
+            const playerKey = JSON.stringify(row);
+            return !globalUsedPlayers.has(playerKey);
+          });
+          
+          // Apply limit first, then mark as used
+          filteredData = category.limit ? availablePlayers.slice(0, category.limit) : availablePlayers;
+          
+          // Mark selected players as used
+          filteredData.forEach(row => globalUsedPlayers.add(JSON.stringify(row)));
         }
       }
 

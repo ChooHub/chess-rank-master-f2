@@ -69,7 +69,7 @@ function SortableCategoryCard({ category, index, columns }: { category: Category
                   {category.players.length} players
                 </span>
                 <span className="text-xs">
-                  Priority {index + 1} • {category.filters?.map(f => `${f.filterColumn} ${f.filterType} \"${f.filterValue}\"`).join(', ')}
+                  Priority {index + 1} • {category.filters?.map(f => `${f.filterColumn} ${f.filterType} \"${f.filterValue}\"`).join(' OR ')}
                 </span>
               </CardDescription>
             </div>

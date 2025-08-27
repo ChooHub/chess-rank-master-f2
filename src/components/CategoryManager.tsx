@@ -68,7 +68,7 @@ function SortableCategory({
               </div>
               <div className="flex items-center gap-4 text-sm text-muted-foreground">
                 <span>
-                  {category.filters?.map(f => `${f.filterColumn} ${getFilterTypeLabel(f.filterType)} "${f.filterValue}"`).join(', ')}
+                  {category.filters?.map(f => `${f.filterColumn} ${getFilterTypeLabel(f.filterType)} "${f.filterValue}"`).join(' OR ')}
                 </span>
                 <div className="flex items-center gap-1">
                   <Users className="h-3 w-3" />
@@ -270,7 +270,7 @@ export default function CategoryManager({
                   )}
                 </div>
                 <CardDescription>
-                  Define filtering rules for this category
+                  Define filtering rules for this category. Multiple filters use OR logic (players matching ANY filter will be included).
                 </CardDescription>
               </CardHeader>
               <CardContent>
